@@ -1,5 +1,6 @@
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class Dish {
     private int id;
@@ -15,7 +16,7 @@ public class Dish {
         this.id = id;
         this.name = name;
         this.dishType = dishType;
-        this.ingredients = new ArrayList<>();
+        this.ingredients = Objects.requireNonNullElseGet(ingredients, ArrayList::new);
     }
 
     // Getters et setters

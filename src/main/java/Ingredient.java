@@ -14,6 +14,7 @@ public class Ingredient {
         this.name = name;
         this.price = price;
         this.category = category;
+        this.dish = dish;
     }
 
     public int getId() {
