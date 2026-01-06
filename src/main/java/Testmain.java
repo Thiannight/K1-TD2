@@ -2,8 +2,6 @@ import java.util.List;
 
 public class Testmain {
     public static void main(String[] args) {
-        System.out.println("=== Début des tests ===");
-
         DataRetriever dr = new DataRetriever();
 
         try {
@@ -27,8 +25,6 @@ public class Testmain {
             System.out.println("\nTest f - findIngredientsByCriteria:");
             List<Ingredient> veggies = dr.findIngredientsByCriteria(null, CategoryEnum.VEGETABLE, null, 1, 10);
             System.out.println("Légumes trouvés: " + veggies.size());
-
-            System.out.println("\n=== Tous les tests passés! ===");
 
         } catch (Exception e) {
             System.err.println("Erreur: " + e.getMessage());
