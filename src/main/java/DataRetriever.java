@@ -16,7 +16,7 @@ public class DataRetriever {
             throw new IllegalArgumentException("L'ID du plat ne peut pas être null");
         }
 
-        String dishSql = "SELECT id, name, dish_type FROM Dish WHERE id = ?";
+        String dishSql = "SELECT id, name, dish_type, price FROM Dish WHERE id = ?";
         String ingredientsSql = "SELECT id, name, price, category, id_dish FROM Ingredient WHERE id_dish = ?";
 
         try (Connection conn = dbConnection.getDBConnection();
@@ -33,6 +33,11 @@ public class DataRetriever {
             dish.setId(dishRs.getInt("id"));
             dish.setName(dishRs.getString("name"));
             dish.setDishType(DishTypeEnum.valueOf(dishRs.getString("dish_type")));
+
+            double priceValue = dishRs.getDouble("price");
+            if (!dishRs.wasNull()) {
+                dish.setPrice(priceValue);
+            }
 
             try (PreparedStatement ingredientsStmt = conn.prepareStatement(ingredientsSql)) {
                 ingredientsStmt.setInt(1, dishID);
@@ -100,7 +105,7 @@ public class DataRetriever {
         return ingredients;
     }
 
-    // c) Pour la création de nouveaux ingrédients - CORRECTION ICI
+    // c) Pour la création de nouveaux ingrédients
     public List<Ingredient> createIngredients(List<Ingredient> newIngredients) {
         if (newIngredients == null || newIngredients.isEmpty()) {
             return new ArrayList<>();
@@ -112,7 +117,6 @@ public class DataRetriever {
             conn = dbConnection.getDBConnection();
             conn.setAutoCommit(false);
 
-            // Vérifier si les ingrédients existent déjà
             String checksql = "SELECT name FROM Ingredient WHERE name = ?";
             try (PreparedStatement checkStmt = conn.prepareStatement(checksql)) {
                 for (Ingredient ingredient : newIngredients) {
@@ -170,7 +174,7 @@ public class DataRetriever {
         }
     }
 
-    // d) Méthode saveDish - CORRECTION AVEC CAST POUR LES ENUMS
+    // d) Méthode saveDish - mise à jour avec gestion du prix
     public Dish saveDish(Dish dishToSave) {
         Connection conn = null;
         try {
@@ -180,11 +184,17 @@ public class DataRetriever {
             Integer dishId = dishToSave.getId();
 
             if (dishId == null || dishId == 0) {
-                // INSERT avec cast pour le type enum
-                String insertSql = "INSERT INTO Dish (name, dish_type) VALUES (?, ?::dish_type_enum) RETURNING id";
+                String insertSql = "INSERT INTO Dish (name, dish_type, price) VALUES (?, ?::dish_type_enum, ?) RETURNING id";
                 try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
                     stmt.setString(1, dishToSave.getName());
                     stmt.setString(2, dishToSave.getDishType().name());
+
+                    if (dishToSave.getPrice() != null) {
+                        stmt.setDouble(3, dishToSave.getPrice());
+                    } else {
+                        stmt.setNull(3, Types.DOUBLE);
+                    }
+
                     ResultSet rs = stmt.executeQuery();
                     if (rs.next()) {
                         dishId = rs.getInt(1);
@@ -192,16 +202,21 @@ public class DataRetriever {
                     }
                 }
             } else {
-                // UPDATE avec cast pour le type enum
-                String updateSql = "UPDATE Dish SET name = ?, dish_type = ?::dish_type_enum WHERE id = ?";
+                String updateSql = "UPDATE Dish SET name = ?, dish_type = ?::dish_type_enum, price = ? WHERE id = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(updateSql)) {
                     stmt.setString(1, dishToSave.getName());
                     stmt.setString(2, dishToSave.getDishType().name());
-                    stmt.setInt(3, dishId);
+
+                    if (dishToSave.getPrice() != null) {
+                        stmt.setDouble(3, dishToSave.getPrice());
+                    } else {
+                        stmt.setNull(3, Types.DOUBLE);
+                    }
+
+                    stmt.setInt(4, dishId);
                     stmt.executeUpdate();
                 }
 
-                // Dissocier tous les ingrédients existants
                 String dissociateSql = "UPDATE Ingredient SET id_dish = NULL WHERE id_dish = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(dissociateSql)) {
                     stmt.setInt(1, dishId);
@@ -209,7 +224,6 @@ public class DataRetriever {
                 }
             }
 
-            // Associer les nouveaux ingrédients
             if (dishToSave.getIngredients() != null && !dishToSave.getIngredients().isEmpty()) {
                 String associateSql = "UPDATE Ingredient SET id_dish = ? WHERE id = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(associateSql)) {
@@ -245,7 +259,7 @@ public class DataRetriever {
     // e) Méthode findDishsByIngredientName
     public List<Dish> findDishsByIngredientName(String ingredientName) {
         List<Dish> dishes = new ArrayList<>();
-        String sql = "SELECT DISTINCT d.id, d.name, d.dish_type FROM Dish d " +
+        String sql = "SELECT DISTINCT d.id, d.name, d.dish_type, d.price FROM Dish d " +
                 "JOIN Ingredient i ON d.id = i.id_dish " +
                 "WHERE LOWER(i.name) LIKE LOWER(?)";
 
@@ -260,6 +274,12 @@ public class DataRetriever {
                 dish.setId(rs.getInt("id"));
                 dish.setName(rs.getString("name"));
                 dish.setDishType(DishTypeEnum.valueOf(rs.getString("dish_type")));
+
+                double priceValue = rs.getDouble("price");
+                if (!rs.wasNull()) {
+                    dish.setPrice(priceValue);
+                }
+
                 dishes.add(dish);
             }
         } catch (SQLException e) {
