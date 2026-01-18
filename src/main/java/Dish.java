@@ -65,12 +65,35 @@ public class Dish {
         ingredient.setDish(this);
     }
 
+    @Override
+    public String toString() {
+        return "Dish{id=" + id + ", name='" + name + "', dishType=" + dishType +
+                ", price=" + price + ", cost=" + getDishCost() +
+                ", margin=" + (price != null ? getCrossMargin() : "N/A") +
+                ", ingredients=" + ingredients + "}";
+    }
     public Double getDishCost() {
         if (ingredients == null || ingredients.isEmpty()) {
             return 0.0;
         }
         return ingredients.stream()
                 .mapToDouble(Ingredient::getPrice)
+                .sum();
+    }
+
+    // Nouvelle méthode qui nécessite un DataRetriever pour récupérer les quantités
+    public Double getDishCostWithQuantities(DataRetriever dataRetriever) {
+        if (this.id == null) {
+            return 0.0;
+        }
+
+        List<DishIngredient> dishIngredients = dataRetriever.findDishIngredients(this.id);
+        if (dishIngredients.isEmpty()) {
+            return 0.0;
+        }
+
+        return dishIngredients.stream()
+                .mapToDouble(DishIngredient::getIngredientCost)
                 .sum();
     }
 
@@ -82,11 +105,12 @@ public class Dish {
         return this.price - cost;
     }
 
-    @Override
-    public String toString() {
-        return "Dish{id=" + id + ", name='" + name + "', dishType=" + dishType +
-                ", price=" + price + ", cost=" + getDishCost() +
-                ", margin=" + (price != null ? getCrossMargin() : "N/A") +
-                ", ingredients=" + ingredients + "}";
+    // Version avec quantités
+    public Double getCrossMarginWithQuantities(DataRetriever dataRetriever) {
+        if (this.price == null) {
+            throw new RuntimeException("Impossible de calculer la marge : le prix de vente n'a pas été fixé pour le plat '" + this.name + "'");
+        }
+        Double cost = getDishCostWithQuantities(dataRetriever);
+        return this.price - cost;
     }
 }
