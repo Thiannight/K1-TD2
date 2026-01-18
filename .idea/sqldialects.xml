@@ -4,6 +4,8 @@
     <file url="file://$PROJECT_DIR$/sql/add_price_column.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/sql/data.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/sql/db.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/sql/new_data.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/sql/new_schema.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/sql/schema.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/src/main/java/DataRetriever.java" dialect="PostgreSQL" />
   </component>
