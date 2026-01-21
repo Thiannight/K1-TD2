@@ -174,7 +174,7 @@ public class DataRetriever {
 
             Integer dishId = dishToSave.getId();
 
-            // UPSERT operation for Dish (combines INSERT and UPDATE)
+            // UPSERT operation for Dish
             String upsertSql =
                     "INSERT INTO Dish (id, name, dish_type, price) " +
                             "VALUES (?, ?, ?::dish_type_enum, ?) " +
@@ -185,7 +185,6 @@ public class DataRetriever {
                             "RETURNING id";
 
             try (PreparedStatement stmt = conn.prepareStatement(upsertSql)) {
-                // Si dishId est null ou 0, PostgreSQL générera un nouvel ID via SERIAL
                 if (dishId == null || dishId == 0) {
                     stmt.setNull(1, Types.INTEGER);
                 } else {
@@ -208,7 +207,6 @@ public class DataRetriever {
                 }
             }
 
-            // Gestion intelligente des ingrédients - Attach/Detach
             if (dishId != null && dishId > 0) {
                 manageDishIngredients(conn, dishId, dishToSave.getIngredients());
             }
