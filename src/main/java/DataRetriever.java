@@ -44,7 +44,6 @@ public class DataRetriever {
                 dish.setPrice(priceValue);
             }
 
-            // Récupération des ingrédients avec leurs quantités
             try (PreparedStatement diStmt = conn.prepareStatement(dishIngredientsSql)) {
                 diStmt.setInt(1, dishID);
                 ResultSet diRs = diStmt.executeQuery();
@@ -57,8 +56,6 @@ public class DataRetriever {
                     ingredient.setPrice(diRs.getDouble("ingredient_price"));
                     ingredient.setCategory(CategoryEnum.valueOf(diRs.getString("category")));
 
-                    // Note: Dans le modèle ManyToMany, l'ingrédient n'a pas de référence directe au plat
-                    // Nous n'utilisons plus ingredient.setDish()
 
                     ingredients.add(ingredient);
                 }
@@ -96,8 +93,6 @@ public class DataRetriever {
                 ingredient.setName(rs.getString("name"));
                 ingredient.setPrice(rs.getDouble("price"));
                 ingredient.setCategory(CategoryEnum.valueOf(rs.getString("category")));
-
-                // Plus de référence directe au plat
                 ingredients.add(ingredient);
             }
         } catch (SQLException e) {
@@ -177,8 +172,6 @@ public class DataRetriever {
             conn.setAutoCommit(false);
 
             Integer dishId = dishToSave.getId();
-
-            // Insertion ou mise à jour du plat
             if (dishId == null || dishId == 0) {
                 String insertSql = "INSERT INTO Dish (name, dish_type, price) VALUES (?, ?::dish_type_enum, ?) RETURNING id";
                 try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
@@ -212,8 +205,6 @@ public class DataRetriever {
                     stmt.setInt(4, dishId);
                     stmt.executeUpdate();
                 }
-
-                // Supprimer les associations existantes
                 String deleteAssociationsSql = "DELETE FROM DishIngredient WHERE id_dish = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(deleteAssociationsSql)) {
                     stmt.setInt(1, dishId);
@@ -221,7 +212,6 @@ public class DataRetriever {
                 }
             }
 
-            // Créer de nouvelles associations (pour simplifier, nous utilisons des quantités par défaut)
             if (dishToSave.getIngredients() != null && !dishToSave.getIngredients().isEmpty()) {
                 String associateSql = "INSERT INTO DishIngredient (id_dish, id_ingredient, quantity_required, unit) VALUES (?, ?, ?, ?)";
                 try (PreparedStatement stmt = conn.prepareStatement(associateSql)) {
@@ -257,7 +247,6 @@ public class DataRetriever {
         }
     }
 
-    // Nouvelle méthode pour récupérer les détails complets d'un plat avec quantités
     public List<DishIngredient> findDishIngredients(Integer dishId) {
         if (dishId == null) {
             throw new IllegalArgumentException("L'ID du plat ne peut pas être null");
