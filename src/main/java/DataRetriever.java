@@ -2,6 +2,7 @@
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class DataRetriever {
     private final DBConnection dbConnection;
@@ -172,61 +173,44 @@ public class DataRetriever {
             conn.setAutoCommit(false);
 
             Integer dishId = dishToSave.getId();
-            if (dishId == null || dishId == 0) {
-                String insertSql = "INSERT INTO Dish (name, dish_type, price) VALUES (?, ?::dish_type_enum, ?) RETURNING id";
-                try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
-                    stmt.setString(1, dishToSave.getName());
-                    stmt.setString(2, dishToSave.getDishType().name());
 
-                    if (dishToSave.getPrice() != null) {
-                        stmt.setDouble(3, dishToSave.getPrice());
-                    } else {
-                        stmt.setNull(3, Types.DOUBLE);
-                    }
+            // UPSERT operation for Dish (combines INSERT and UPDATE)
+            String upsertSql =
+                    "INSERT INTO Dish (id, name, dish_type, price) " +
+                            "VALUES (?, ?, ?::dish_type_enum, ?) " +
+                            "ON CONFLICT (id) DO UPDATE SET " +
+                            "name = EXCLUDED.name, " +
+                            "dish_type = EXCLUDED.dish_type, " +
+                            "price = EXCLUDED.price " +
+                            "RETURNING id";
 
-                    ResultSet rs = stmt.executeQuery();
-                    if (rs.next()) {
-                        dishId = rs.getInt(1);
-                        dishToSave.setId(dishId);
-                    }
-                }
-            } else {
-                String updateSql = "UPDATE Dish SET name = ?, dish_type = ?::dish_type_enum, price = ? WHERE id = ?";
-                try (PreparedStatement stmt = conn.prepareStatement(updateSql)) {
-                    stmt.setString(1, dishToSave.getName());
-                    stmt.setString(2, dishToSave.getDishType().name());
-
-                    if (dishToSave.getPrice() != null) {
-                        stmt.setDouble(3, dishToSave.getPrice());
-                    } else {
-                        stmt.setNull(3, Types.DOUBLE);
-                    }
-
-                    stmt.setInt(4, dishId);
-                    stmt.executeUpdate();
-                }
-                String deleteAssociationsSql = "DELETE FROM DishIngredient WHERE id_dish = ?";
-                try (PreparedStatement stmt = conn.prepareStatement(deleteAssociationsSql)) {
+            try (PreparedStatement stmt = conn.prepareStatement(upsertSql)) {
+                // Si dishId est null ou 0, PostgreSQL générera un nouvel ID via SERIAL
+                if (dishId == null || dishId == 0) {
+                    stmt.setNull(1, Types.INTEGER);
+                } else {
                     stmt.setInt(1, dishId);
-                    stmt.executeUpdate();
+                }
+
+                stmt.setString(2, dishToSave.getName());
+                stmt.setString(3, dishToSave.getDishType().name());
+
+                if (dishToSave.getPrice() != null) {
+                    stmt.setDouble(4, dishToSave.getPrice());
+                } else {
+                    stmt.setNull(4, Types.DOUBLE);
+                }
+
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    dishId = rs.getInt(1);
+                    dishToSave.setId(dishId);
                 }
             }
 
-            if (dishToSave.getIngredients() != null && !dishToSave.getIngredients().isEmpty()) {
-                String associateSql = "INSERT INTO DishIngredient (id_dish, id_ingredient, quantity_required, unit) VALUES (?, ?, ?, ?)";
-                try (PreparedStatement stmt = conn.prepareStatement(associateSql)) {
-                    for (Ingredient ingredient : dishToSave.getIngredients()) {
-                        if (ingredient.getId() > 0) {
-                            stmt.setInt(1, dishId);
-                            stmt.setInt(2, ingredient.getId());
-                            // Valeurs par défaut pour quantity_required et unit
-                            stmt.setDouble(3, 1.0); // Quantité par défaut
-                            stmt.setString(4, "KG"); // Unité par défaut
-                            stmt.addBatch();
-                        }
-                    }
-                    stmt.executeBatch();
-                }
+            // Gestion intelligente des ingrédients - Attach/Detach
+            if (dishId != null && dishId > 0) {
+                manageDishIngredients(conn, dishId, dishToSave.getIngredients());
             }
 
             conn.commit();
@@ -243,6 +227,63 @@ public class DataRetriever {
                     conn.setAutoCommit(true);
                     conn.close();
                 } catch (SQLException ex) { /* ignore */ }
+            }
+        }
+    }
+
+    private void manageDishIngredients(Connection conn, Integer dishId, List<Ingredient> newIngredients) throws SQLException {
+        if (newIngredients == null) {
+            newIngredients = new ArrayList<>();
+        }
+        List<Integer> currentIngredientIds = new ArrayList<>();
+        String selectCurrentSql = "SELECT id_ingredient FROM DishIngredient WHERE id_dish = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(selectCurrentSql)) {
+            stmt.setInt(1, dishId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                currentIngredientIds.add(rs.getInt("id_ingredient"));
+            }
+        }
+
+        // Déterminer les ingrédients à détacher
+        List<Integer> ingredientsToDetach = new ArrayList<>(currentIngredientIds);
+        List<Integer> newIngredientIds = newIngredients.stream()
+                .filter(ing -> ing != null && ing.getId() > 0)
+                .map(Ingredient::getId)
+                .collect(Collectors.toList());
+        ingredientsToDetach.removeAll(newIngredientIds);
+
+        // Détacher les ingrédients qui ne sont plus dans la liste
+        if (!ingredientsToDetach.isEmpty()) {
+            String deleteSql = "DELETE FROM DishIngredient WHERE id_dish = ? AND id_ingredient = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
+                for (Integer ingredientId : ingredientsToDetach) {
+                    stmt.setInt(1, dishId);
+                    stmt.setInt(2, ingredientId);
+                    stmt.addBatch();
+                }
+                stmt.executeBatch();
+            }
+        }
+
+        // Attacher les nouveaux ingrédients
+        List<Integer> ingredientsToAttach = new ArrayList<>(newIngredientIds);
+        ingredientsToAttach.removeAll(currentIngredientIds);
+
+        if (!ingredientsToAttach.isEmpty()) {
+            String insertSql = "INSERT INTO DishIngredient (id_dish, id_ingredient, quantity_required, unit) " +
+                    "VALUES (?, ?, ?, ?) " +
+                    "ON CONFLICT (id_dish, id_ingredient) DO NOTHING";
+
+            try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+                for (Integer ingredientId : ingredientsToAttach) {
+                    stmt.setInt(1, dishId);
+                    stmt.setInt(2, ingredientId);
+                    stmt.setDouble(3, 1.0);
+                    stmt.setString(4, "KG");
+                    stmt.addBatch();
+                }
+                stmt.executeBatch();
             }
         }
     }
@@ -299,4 +340,3 @@ public class DataRetriever {
         return dishIngredients;
     }
 }
-//test github
